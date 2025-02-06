@@ -26,6 +26,12 @@ Mode:一定是在flags中使用了O_CREAT标志，mode记录待创建的文件�
 ~~~
 ## 读写write /read
 
+~~~ c
+#include <unistd.h>
+ssize_t write(int fd, const void *buf, size_t count);
+ssize_t read(int fd, void *buf, size_t count);
+~~~
+
 ## 光标定位 lseek
 
 ## 关闭       close
