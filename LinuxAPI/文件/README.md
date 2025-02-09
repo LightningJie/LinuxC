@@ -33,5 +33,14 @@ ssize_t read(int fd, void *buf, size_t count);
 ~~~
 
 ## 光标定位 lseek
-
+~~~ cm
+#include <sys/types.h>
+#include <unistd.h>
+off_t lseek(int fd, off_t offset, int whence);
+~~~
+- 第二个参数是偏移量
+- 第三个参数是文件头，文件当前光标位置，文件尾
+SEEK_SET：The file offset is set to offset bytes.
+SEEK_CUR：The file offset is set to its current location plus offset bytes.
+SEEK_END：The file offset is set to the size of the file plus offset bytes.
 ## 关闭       close
