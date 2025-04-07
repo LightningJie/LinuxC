@@ -28,7 +28,7 @@ gcc $1 -lwiringPi -lwiringPiDev -lpthread -lm -lcrypt -lrt
 
 
 
-### 使用`nmcli`命令直接设置自动连接
+### 自动连接wifi
 
 1. **连接到WiFi**：
 
