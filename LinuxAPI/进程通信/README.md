@@ -96,6 +96,7 @@ msgID 是由 msgget 返回的实际消息队列标识符，用于在系统中唯
 - 如果没有与键值key相对应的消息队列，并且flag中包含了IPC_CREAT标志位。
 - key参数为IPC_PRIVATE。
   
+
 函数msgrcv在读取消息队列时，type参数有下面几种情况：
 - type == 0，返回队列中的第一个消息；
 - type > 0，返回队列中消息类型为 type 的第一个消息；
@@ -223,6 +224,22 @@ union sigval {
    void *sival_ptr;
  };
 ~~~
+
+sa_mask应用：
+
+```c
+struct sigaction act;
+act.sa_handler = handler;
+sigemptyset(&act.sa_mask);
+act.sa_flags = 0;
+if(sigaction(SIGQUIT, &act, NULL))
+{
+    printf("sigaction error.\n");
+    exit(0);
+}
+```
+
+
 
 ## 信号量
 

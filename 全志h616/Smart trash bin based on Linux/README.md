@@ -282,11 +282,140 @@ except Exception as error:
   print(error.code)
 ```
 
-
+测试
 
 ```bash
 gcc -o garbagetest garbagetest.c garbage.h garbage.c -I /usr/include/python3.10 -l python3.10
 ```
+
+### 3.4 USB摄像头配置
+
+检查是否加载usb摄像头模块
+
+```bash
+lsmod
+
+#显示 uvcvideo              102400  0
+```
+
+检查USB摄像头的设备节点信息是否为/dev/videoX
+
+```
+sudo apt install -y v4l-utils
+u4l2-ctl --list-device
+```
+
+测试USB摄像头拍照
+
+```bash
+sudo apt-get install -y fswebcam
+
+sudo fswebcam -d /dev/video1 --no-banner -r 128x720 -S 5 ./image.jpg
+```
+
+测试USB摄像头视频流
+
+```bash
+git clone https://gitee.com/leeboby/mjpg-streamer
+sudo apt-get install -y cmake libjpeg8-dev
+
+cd mjpg-streamer/mjpg-streamer-experimental
+make -j4
+sudo make install
+
+#启动
+#export LD_LIBRARY_PATH=.
+#sudo ./mjpg_streamer -i "./input_uvc.so -d /dev/video0 -u -f 30"  -o "./output_http.so -w ./www"
+根据上述命令修改start.sh文件
+./start.sh
+```
+
+**获取照片**
+
+```
+wget http://192.168.136.52:8080/?action=snapshot -O /tmp/garbage.jpg
+```
+
+**开机自启动start.sh**
+
+touch mjpg.sh
+
+```
+cd /home/orangepi/mjpg-streamer/mjpg-streamer-experimental
+./start.sh
+```
+
+```
+cd /etc/xdg/autostar
+sudo cp im-launch.desktop mjpg.desktop
+
+[Desktop Entry]
+Name=mjpg
+Exec= /home/orangepi/mjpg.sh
+Type=Application
+NoDisplay=true
+```
+
+重启终端检查是否设置成功
+
+```
+sudo reboot -f
+ps ax | grep mjpg
+```
+
+### 3.5 语音模块配置
+
+配置官网：https://www.smartpi.cn/#/
+
+### 3.6VSCode远程连接
+
+安装remote development插件
+
+连接
+
+```bash
+ssh orangepi@192.168.136.52 
+```
+
+### 3.7 编译main.c
+
+把串口改为不需要sudo的
+
+```bash
+sudo chmod 777 /dev/ttyS5
+```
+
+```
+gcc -o test garbage.c garbage.h uartTool.c uartTool.h main.c -I /usr/include/python3.10 -lpython3.10
+```
+
+### 3.8 增加垃圾桶开关盖功能
+
+```
+gcc -o test pwm.c pwm.h garbage.c garbage.h uartTool.c uartTool.h main.c -I /usr/include/python3.10 -lpython3.10 -lwiringPi -lwiringPiDev -lpthread -lm -lcrypt -lrt
+sudo -E ./test	
+```
+
+### 3.9 优化代码（线程）
+
+将代码分装成三个线程：
+
+- 香橙派读取语音模块数据线程。
+  - 读取到语音模块发送的串口数据，发送线程信号给阿里云交互线程。
+- 阿里云交互线程
+  - 收到线程信号，执行拍照和垃圾识别
+  - 并发执行三个线程：
+    - 垃圾桶开盖线程
+    - 语音播报类别线程
+    - OLED显示线程
+- 网络线程
+
+```
+gcc -o test pwm.c pwm.h garbage.c garbage.h uartTool.c uartTool.h main.c -I /usr/include/python3.10 -lpython3.10 -lwiringPi -lwiringPiDev -lpthread -lm -lcrypt -lrt
+sudo -E ./test	
+```
+
+### 3.10 增加oled显示
 
 
 
@@ -499,3 +628,119 @@ python test.py
 - **系统规范与兼容性**：`/usr/bin` 是系统级别的可执行文件目录，通常用于存放系统范围内可共享的命令和工具。Python 解释器被安装在 `/usr/bin` 目录下，符合 Linux 系统的文件系统层次结构标准（FHS），使得 Python 可以作为系统级的工具被全局调用。这样，系统中的所有用户都可以在任何位置通过命令行输入 `python` 或 `python3` 来启动 Python 解释器，而不需要指定完整的路径。同时，将 Python 解释器放在系统级目录中，也便于系统进行统一的管理和维护，例如在系统更新时可以方便地对 Python 进行升级或修复。
 - **虚拟环境的影响**：在虚拟环境中，情况会有所不同。当创建一个虚拟环境时，会在虚拟环境的目录下创建一个独立的 Python 解释器和相关的库目录。此时，使用 `pip` 安装的包会被安装在虚拟环境的 `lib` 目录下，而不是 `~/.local/lib` 目录。这是为了实现虚拟环境的隔离性，使得每个虚拟环境都有自己独立的 Python 运行环境和软件包依赖，避免不同项目之间的依赖冲突。
 
+### 条件变量
+
+```c
+void *func1()
+{
+    pthread_mutex_lock(&mutex);
+	pthread_cond_signal(&cond);
+	pthread_mutex_unlock(&mutex); 
+}
+void *func2()
+{
+    pthread_mutex_lock(&mutex);
+	pthread_cond_wait(&cond,&mutex);
+	pthread_mutex_unlock(&mutex);
+}
+```
+
+如果不加mutex互斥量，有可能func2正准备调用 pthread_cond_wait 进入等c待状态。
+
+此时，func1调用 pthread_cond_signal 发送信号。
+
+但是func2在收到信号之前就已经进入了 pthread_cond_wait 状态，这样就会错过这个信号，导致fun2一直等待，出现死锁的情况。
+
+### 为什么不互斥量和条件变量初始化也能用？
+
+在 POSIX 标准中，`pthread_cond_t` 和 `pthread_mutex_t` 类型的变量有两种初始化方式：**显式初始化**和**隐式（零值）初始化**。你观察到的 “不初始化也能用” 的现象，实际上是因为 POSIX 允许 **静态存储期的变量通过零值隐式初始化**，但这有严格的适用条件，并非 “不初始化”，而是利用了语言特性和库规范的结合。
+
+**一、为什么 “不初始化” 也能用？**
+
+1. **静态存储期变量的零值初始化**
+
+- 如果 `pthread_cond_t cond;` 和 `pthread_mutex_t mutex;` 是在 **全局作用域**或 **静态局部作用域**（使用 `static` 修饰）定义的，C 语言会将其初始化为 **零值**（所有字节为 0）。
+- POSIX 标准明确规定：
+  - 当 `pthread_mutex_t` 的值为零值时，等同于调用 `pthread_mutex_init(&mutex, NULL)`（默认属性初始化）。
+  - 当 `pthread_cond_t` 的值为零值时，等同于调用 `pthread_cond_init(&cond, NULL)`（默认属性初始化）。
+    这就是 “隐式初始化” 的依据。
+
+2. **示例场景**
+
+```c
+pthread_cond_t cond;       // 全局变量，自动零初始化
+pthread_mutex_t mutex;     // 全局变量，自动零初始化
+
+int main() {
+    pthread_mutex_lock(&mutex); // 直接使用，等价于已默认初始化
+    // ...
+    return 0;
+}
+```
+
+这里的 `cond` 和 `mutex` 作为全局变量，被编译器自动填充为零值，POSIX 库保证其等同于默认初始化的有效状态。
+
+**二、如果是局部变量（自动存储期）呢？**
+
+如果变量在函数内部定义（局部变量），且未显式初始化：
+
+```c
+void func() {
+    pthread_cond_t cond;       // 局部变量，未初始化（值不确定）
+    pthread_mutex_t mutex;     // 局部变量，未初始化（值不确定）
+    pthread_mutex_lock(&mutex); // 未定义行为！
+}
+```
+
+- **此时行为未定义**：局部变量的初始值是随机的（垃圾值），直接使用会导致崩溃或不可预测的错误。
+
+- 必须显式初始化：
+
+  ```c
+  pthread_cond_t cond = PTHREAD_COND_INITIALIZER; // 静态初始化
+  pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; // 静态初始化
+  
+  // 或动态初始化（适用于局部变量或运行时需要设置属性的场景）：
+  pthread_cond_init(&cond, NULL);
+  pthread_mutex_init(&mutex, NULL);
+  ```
+
+**四、总结：“能用” 的前提和风险**
+
+| 场景                 | 隐式零值初始化是否允许？ | 风险 / 注意事项                                              |
+| -------------------- | ------------------------ | ------------------------------------------------------------ |
+| 全局 / 静态变量      | 允许（POSIX 保证）       | 仅适用于默认属性，若需自定义属性仍需显式初始化               |
+| 局部变量（未初始化） | 不允许（未定义行为）     | 必须显式初始化（`PTHREAD_XXX_INITIALIZER` 或 `pthread_xxx_init`） |
+| 动态分配（`malloc`） | 不允许                   | 必须调用 `pthread_xxx_init` 初始化                           |
+
+**最佳实践：**
+
+1. 显式初始化：无论变量作用域如何，显式使用
+
+   ```
+   PTHREAD_XXX_INITIALIZER
+   ```
+
+   或
+
+   ```
+   pthread_xxx_init
+   ```
+
+   更安全，避免依赖 “零值巧合”。
+
+   ```c
+   pthread_cond_t cond = PTHREAD_COND_INITIALIZER; // 推荐静态初始化
+   pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+   ```
+
+2. 动态初始化：对局部变量或需要自定义属性（如递归锁、非阻塞锁）时，必须调用初始化函数：
+
+   ```c
+   pthread_cond_init(&cond, NULL); // 默认属性
+   pthread_mutex_init(&mutex, &attr); // 可指定属性
+   ```
+
+3. **清理资源**：动态初始化的变量需调用 `pthread_xxx_destroy` 释放资源（静态初始化的全局变量无需手动销毁，程序结束时自动释放）。
+
+理解这一机制的关键是：POSIX 库利用了 C 语言的零值初始化特性，对静态存储期的变量提供了便利，但这是有严格适用范围的，并非 “不初始化也能用”，而是 “零值初始化被库规范定义为有效”。对于局部变量或动态分配的变量，必须显式初始化，否则会导致严重错误。
